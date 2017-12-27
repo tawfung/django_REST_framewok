@@ -128,13 +128,56 @@
 #########################   Using generic class-based views
 
 from snippets.models import Snippet
-from snippets.serializers import SnippetSerializer
-from rest_framework import generics
+from snippets.permissions import IsOwnerOrReadOnly
+from snippets.serializers import SnippetSerializer, UserSerializer
+from rest_framework import generics, permissions, renderers
+from rest_framework.reverse import reverse
+from rest_framework.response import Response
+from rest_framework.decorators import api_view
+from django.contrib.auth.models import User
 
 class SnippetList(generics.ListCreateAPIView):
     queryset = Snippet.objects.all()
     serializer_class = SnippetSerializer
+    # Adding required permissions to views
+    permission_classes = (permissions.IsAuthenticatedOrReadOnly,)
 
-class SnippetDetail(generics.RetrieveDestroyAPIView):
+
+######## Associating Snippets with Users
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
+
+class SnippetDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset = Snippet.objects.all()
     serializer_class = SnippetSerializer
+    # Adding required permissions to views
+    permission_classes = (permissions.IsAuthenticatedOrReadOnly,IsOwnerOrReadOnly)
+
+############ views for the user representations
+
+class UserList(generics.ListAPIView):
+    queryset = User.objects.all()
+    serializer_class = SnippetSerializer
+
+class UserDetail(generics.RetrieveAPIView):
+    queryset = User.objects.all()
+    serializer_class = SnippetSerializer
+
+############### Creating an endpoint for the root of our API
+
+@api_view(['GET'])
+def api_root(request, format=None):
+    return Response({
+            'users': reverse('user-list', request=request, format=format),
+            'snippets': reverse('snippet-list', request=request, format=format)
+    })
+
+############### Creating an endpoint for the highlighted snippets
+
+class SnippetHighlight(generics.GenericAPIView):
+    queryset = Snippet.objects.all()
+    renderer_classes = (renderers.StaticHTMLRenderer,)
+
+    def get(self, request, *args, **kwargs):
+        snippet = self.get_object()
+        return Response(snippet.highlighted)
